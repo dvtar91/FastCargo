@@ -33,7 +33,98 @@ Fast Cargo годами развивалась как независимый б�
 
  ### Текущее состояние архитектуры Fast Cargo
 
- **ДОБАВИТЬ СХЕМУ!!!**
+```mermaid
+flowchart TB
+    %% ===== Заголовок =====
+    %% Архитектура Fast Cargo (состояние AS-IS)
+
+    %% ===== Слой пользователей =====
+    subgraph USERS["Пользователи"]
+        CLIENT[" Клиент<br/>B2B / B2C"]
+        DRIVER[" Водитель / курьер"]
+    end
+
+    %% ===== Слой фронт-офиса =====
+    subgraph FRONT["Слой фронт-офиса"]
+        WEB["Личный кабинет Web<br/>React / JS"]
+        ACQ["Модуль «Эквайринг»<br/>JS SDK / API"]
+        MOBILE["Мобильное приложение<br/>Flutter / Native"]
+    end
+
+    %% ===== Внешние системы =====
+    PAYGW["Платёжный шлюз банка<br/>(внешняя система)"]
+
+    %% ===== Middleware-слой =====
+    subgraph MW["Middleware-слой"]
+        GATEWAY["Интеграционный шлюз<br/>FastAPI / Uvicorn"]
+    end
+
+    %% ===== Слой бэк-офиса =====
+    subgraph BACK["Слой бэк-офиса"]
+        subgraph MIDDLEWARE_LAYER["MIDDLEWARE LAYER"]
+            ORDERS["Модуль «Заказы»"]
+            WAREHOUSE["Модуль «Warehouse»"]
+            DELIVERY["Модуль «Доставка»"]
+            FINANCE["Модуль «Финансы»"]
+        end
+    end
+
+    %% ===== Storage =====
+    subgraph STORAGE["Storage level"]
+       
+        subgraph SCHEMAS[" Единая база данных PostgreSQL(один физический инстанс) "]
+            SCH_OP["Схема-operational<br/>orders, warehouse_stocks, waybills..."]
+            SCH_MD["Схема-master_data<br/>справочники ФИАС, тарифы"]
+            SCH_INT["Схема-integration<br/>логи API, кэш шлюза"]
+        end
+       
+    end
+
+    %% ===== Пользователи → Фронт-офис =====
+    CLIENT -->|"Использует HTTPS"| WEB
+    DRIVER -->|"Использует HTTPS"| MOBILE
+
+    %% ===== Фронт-офис → Эквайринг / Платёжный шлюз =====
+    WEB -->|"Инициализирует оплату"| ACQ
+    ACQ -->|"API-запросы"| PAYGW
+    PAYGW -->|"Вебхуки об оплате"| GATEWAY
+
+    %% ===== Фронт-офис → Интеграционный шлюз =====
+    WEB -->|"REST API<br/>Заказы, расчёт"| GATEWAY
+    MOBILE -->|"REST API<br/>Координаты, статусы"| GATEWAY
+
+    %% ===== Интеграционный шлюз → Бэк-офис =====
+    GATEWAY -->|"Синхронный HTTP<br/>проксирование всех запросов"| BACK
+    GATEWAY -->|"Запись логов"| SCH_INT
+
+    %% ===== In-process calls внутри бэк-офиса =====
+    ORDERS -.->|"In-process call"| WAREHOUSE
+    WAREHOUSE -.->|"In-process call"| DELIVERY
+    DELIVERY -.->|"In-process call"| FINANCE
+
+    %% ===== Бэк-офис → БД =====
+    ORDERS -->|"Запись транзакций заказа"| SCH_OP
+    DELIVERY -->|"Запись GPS-координат"| SCH_OP
+    FINANCE -->|"Тяжёлые отчётные JOIN<br/>блокируют таблицы"| SCH_OP
+    SCH_MD -->|"Чтение справочников"| WAREHOUSE
+    SCH_MD -->|"Чтение справочников"| DELIVERY
+
+    %% ===== Стили =====
+    classDef userStyle fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
+    classDef frontStyle fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    classDef extStyle fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    classDef mwStyle fill:#fffde7,stroke:#f9a825,stroke-width:2px,color:#000
+    classDef backStyle fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+    classDef storageStyle fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#000
+
+    class CLIENT,DRIVER userStyle
+    class WEB,ACQ,MOBILE frontStyle
+    class PAYGW extStyle
+    class GATEWAY mwStyle
+    class ORDERS,WAREHOUSE,DELIVERY,FINANCE backStyle
+    class DB,SCH_OP,SCH_MD,SCH_INT storageStyle
+
+```
 
 ## Предстоящая трансформация
 
